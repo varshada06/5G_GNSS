@@ -1,7 +1,21 @@
-streamlit
-numpy
-pandas
-plotly
-scipy
-xgboost
-scikit-learn
+# ============================================================================
+# GNSS-5G Hybrid Positioning System - Requirements (Locked Versions)
+# ============================================================================
+
+# Core Scientific Computing
+numpy==1.24.3
+scipy==1.10.1
+pandas==2.0.3
+
+# Machine Learning
+xgboost==1.7.6
+scikit-learn==1.3.0
+
+# Visualization & Web Interface
+streamlit==1.28.1
+plotly==5.17.0
+matplotlib==3.7.2
+
+# Utilities
+python-dotenv==1.0.0
+joblib==1.3.1
