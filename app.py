@@ -1,5 +1,5 @@
-# app_fixed.py
-# Fixed Version - No UnboundLocalError
+# app.py
+# Fixed Version - Properly handles matrix operations
 
 import streamlit as st
 import numpy as np
@@ -173,11 +173,6 @@ st.markdown("""
         color: #1a1a2e;
         margin-bottom: 0.3rem;
         font-size: 0.95rem;
-    }
-    
-    .info-box .highlight {
-        color: #0f3460;
-        font-weight: 600;
     }
     
     .success-box {
@@ -364,7 +359,7 @@ class XGBoostPredictor:
 
 
 # ============================================================================
-# FIXED FILTER IMPLEMENTATIONS - NO UnboundLocalError
+# FIXED FILTER IMPLEMENTATIONS
 # ============================================================================
 
 class SimpleMRAKF:
@@ -407,15 +402,36 @@ class SimpleMRAKF:
         self.P = (np.eye(8) - K_gain @ H) @ self.P
     
     def _second_stage_EKF(self, y_Sat):
-        x_prior, P_prior = self.x.copy(), self.P.copy()
+        x_prior = self.x.copy()
+        P_prior = self.P.copy()
+        
         for m in range(self.model.M):
+            # Compute Jacobian (1x8)
             H_m = self._compute_GNSS_Jacobian(x_prior, m)
-            S_m = float(H_m @ P_prior @ H_m.T + self.R_Sat[m, m]) + 1e-10
-            K_m = (P_prior @ H_m.T) / S_m
+            
+            # Compute innovation covariance (scalar)
+            # H_m is 1x8, P_prior is 8x8, H_m.T is 8x1
+            # H_m @ P_prior @ H_m.T gives a 1x1 matrix
+            innovation_var = H_m @ P_prior @ H_m.T  # This is (1,1) matrix
+            S_m = float(innovation_var[0, 0]) + self.R_Sat[m, m] + 1e-10
+            
+            # Kalman gain (8x1)
+            K_m = (P_prior @ H_m.T) / S_m  # (8x1) / scalar
+            
+            # Measurement prediction (scalar)
             h_m = self._compute_GNSS_measurement(x_prior, m)
-            x_prior += K_m.flatten() * (y_Sat[m] - h_m)
+            
+            # Innovation (scalar)
+            innovation = y_Sat[m] - h_m
+            
+            # State update
+            x_prior = x_prior + K_m.flatten() * innovation
+            
+            # Covariance update
             P_prior = (np.eye(8) - K_m @ H_m) @ P_prior
-        self.x, self.P = x_prior, P_prior
+        
+        self.x = x_prior
+        self.P = P_prior
     
     def _predict_noise(self, state):
         p = state[:3]
@@ -439,7 +455,6 @@ class SimpleMRAKF:
         return block_diag(*R_list)
     
     def _compute_BS_Jacobian(self, state):
-        """Compute Jacobian for BS measurements - FIXED VERSION"""
         num_bs = self.model.K
         H = np.zeros((3 * num_bs, 8))
         p = state[:3]
@@ -454,17 +469,14 @@ class SimpleMRAKF:
             
             i = 3 * k
             
-            # TOA derivatives
             H[i, 0] = dx / (self.model.c * d_3D)
             H[i, 1] = dy / (self.model.c * d_3D)
             H[i, 2] = dz / (self.model.c * d_3D)
             H[i, 6] = 1
             
-            # Azimuth derivatives
             H[i+1, 0] = -dy / (d_2D**2 + 1e-10)
             H[i+1, 1] = dx / (d_2D**2 + 1e-10)
             
-            # Elevation derivatives
             H[i+2, 0] = -(dx * dz) / (d_2D * d_3D**2 + 1e-10)
             H[i+2, 1] = -(dy * dz) / (d_2D * d_3D**2 + 1e-10)
             H[i+2, 2] = d_2D / (d_3D**2 + 1e-10)
@@ -540,7 +552,9 @@ class StandardEKF:
                 y_Sat = GNSS_meas[n]
                 for m in range(self.model.M):
                     H_m = self._compute_GNSS_Jacobian(self.x, m)
-                    S_m = float(H_m @ self.P @ H_m.T + self.R_Sat[m, m]) + 1e-10
+                    # Fix: Extract scalar from 1x1 matrix
+                    innovation_var = H_m @ self.P @ H_m.T
+                    S_m = float(innovation_var[0, 0]) + self.R_Sat[m, m] + 1e-10
                     K_m = (self.P @ H_m.T) / S_m
                     h_m = self._compute_GNSS_measurement(self.x, m)
                     self.x += K_m.flatten() * (y_Sat[m] - h_m)
